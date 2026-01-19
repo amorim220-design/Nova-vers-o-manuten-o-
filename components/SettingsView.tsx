@@ -1,7 +1,7 @@
 
 import React from 'react';
 import Header from './Header';
-import { Theme, IconStyle, ThemeColor } from '../../types';
+import { Theme, IconStyle, ThemeColor } from '../types';
 
 interface SettingsViewProps {
   onBack: () => void;
