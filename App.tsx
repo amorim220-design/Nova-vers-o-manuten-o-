@@ -1,24 +1,24 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Hotel, Apartment, AppData, ScheduledTask, TaskPriority, Theme, IconStyle, ThemeColor } from './types';
-import HotelList from './components/HotelList';
-import HotelView from './components/HotelView';
-import ApartmentView from './components/ApartmentView';
-import ScheduleView from './components/ScheduleView';
-import Dashboard from './components/Dashboard';
-import Header from './components/Header';
-import SettingsView from './components/SettingsView';
-import { PlusIcon, CameraIcon, XCircleIcon, PencilIcon } from './components/Icons';
-import Modal from './components/Modal';
-import ConfirmationModal from './components/ConfirmationModal';
-import PhotoViewerModal from './components/PhotoViewerModal';
+import { Hotel, Apartment, AppData, ScheduledTask, TaskPriority, Theme, IconStyle, ThemeColor, ItemStatus } from './types';
+import HotelList from './contexts/components/HotelList';
+import HotelView from './contexts/components/HotelView';
+import ApartmentView from './contexts/components/ApartmentView';
+import ScheduleView from './contexts/components/ScheduleView';
+import Dashboard from './contexts/components/Dashboard';
+import Header from './contexts/components/Header';
+import SettingsView from './contexts/components/SettingsView';
+import { PlusIcon, CameraIcon, XCircleIcon, PencilIcon } from './contexts/components/Icons';
+import Modal from './contexts/components/Modal';
+import ConfirmationModal from './contexts/components/ConfirmationModal';
+import PhotoViewerModal from './contexts/components/PhotoViewerModal';
 import { IconProvider } from './contexts/IconContext';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { Capacitor } from '@capacitor/core';
-import UpdateModal from './components/UpdateModal';
+import UpdateModal from './contexts/components/UpdateModal';
 import { useAuth } from './contexts/AuthContext';
-import LoginView from './components/LoginView';
+import LoginView from './contexts/components/LoginView';
 
 const fileToBase64 = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -46,6 +46,63 @@ const App: React.FC = () => {
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
   const [latestVersionInfo, setLatestVersionInfo] = useState<{ version: string; url: string; notes: string[] } | null>(null);
 
+  const cleanLoadedData = (loadedData: any): AppData => {
+    const dataToClean = loadedData || {};
+    const cleaned: AppData = {
+        userName: dataToClean.userName || 'Usuário',
+        hotels: [],
+        scheduledTasks: [],
+    };
+
+    cleaned.hotels = (dataToClean.hotels || [])
+      .filter(Boolean)
+      .map((hotel: any) => ({
+        id: hotel.id || `hotel_${Date.now()}_${Math.random()}`,
+        name: hotel.name || 'Nome do Hotel',
+        address: hotel.address || '',
+        photo: hotel.photo === undefined ? null : hotel.photo,
+        apartments: (hotel.apartments || [])
+            .filter(Boolean)
+            .map((apt: any) => ({
+                id: apt.id || `apt_${Date.now()}_${Math.random()}`,
+                number: apt.number || '0',
+                description: apt.description || '',
+                photos: (apt.photos || []).filter(Boolean),
+                items: (apt.items || [])
+                    .filter(Boolean)
+                    .map((item: any) => ({
+                        id: item.id || `item_${Date.now()}_${Math.random()}`,
+                        name: item.name || 'Nome do Item',
+                        status: item.status || ItemStatus.OK,
+                        photos: (item.photos || []).filter(Boolean),
+                    })),
+                maintenanceLogs: (apt.maintenanceLogs || [])
+                    .filter(Boolean)
+                    .map((log: any) => ({
+                        id: log.id || `log_${Date.now()}_${Math.random()}`,
+                        date: log.date || new Date().toISOString(),
+                        notes: log.notes || '',
+                        photos: (log.photos || []).filter(Boolean),
+                        itemId: log.itemId || '',
+                    })),
+        })),
+    }));
+
+    cleaned.scheduledTasks = (dataToClean.scheduledTasks || [])
+        .filter(Boolean)
+        .map((task: any) => ({
+            id: task.id || `task_${Date.now()}_${Math.random()}`,
+            title: task.title || 'Tarefa',
+            description: task.description || '',
+            dueDate: task.dueDate || new Date().toISOString().split('T')[0],
+            priority: task.priority || TaskPriority.Medium,
+            isComplete: !!task.isComplete,
+            notificationSent: !!task.notificationSent,
+        }));
+
+    return cleaned;
+  };
+
   // Firestore data listener for the authenticated user
   useEffect(() => {
     if (!user) {
@@ -58,11 +115,9 @@ const App: React.FC = () => {
     
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
-        const loadedData = docSnap.data() as AppData;
-        if (!loadedData.userName) {
-            loadedData.userName = 'Usuário'; // Default if not set
-        }
-        setData(loadedData);
+        const loadedData = docSnap.data();
+        const cleanedData = cleanLoadedData(loadedData);
+        setData(cleanedData);
       } else {
         // New user, create initial doc with default name
         const initialData: AppData = { userName: 'Usuário', hotels: [], scheduledTasks: [] };
@@ -199,20 +254,14 @@ const App: React.FC = () => {
     localStorage.setItem('themeColor', themeColor);
   }, [themeColor]);
 
-  // When data loads, if username is the default, prompt user to edit it.
-  useEffect(() => {
-    if (!isLoading && data.userName === 'Usuário') {
-        setTempName(data.userName);
-        setIsEditingName(true);
-    }
-  }, [isLoading, data.userName]);
-
   const handleSaveName = () => {
     const finalName = tempName.trim();
-    if (finalName) {
-      setData(prev => ({ ...prev, userName: finalName }));
-      setIsEditingName(false);
+    // Only update state if the name is not empty and has actually changed.
+    if (finalName && finalName !== data.userName) {
+        setData(prev => ({ ...prev, userName: finalName }));
     }
+    // Always exit edit mode on a save attempt.
+    setIsEditingName(false);
   };
   
   const handleLogout = () => {
@@ -236,14 +285,14 @@ const App: React.FC = () => {
   const [isAddHotelModalOpen, setIsAddHotelModalOpen] = useState(false);
   const [newHotelName, setNewHotelName] = useState('');
   const [newHotelAddress, setNewHotelAddress] = useState('');
-  const [newHotelPhoto, setNewHotelPhoto] = useState<string | undefined>(undefined);
+  const [newHotelPhoto, setNewHotelPhoto] = useState<string | null>(null);
 
   // Edit Hotel Modal State
   const [isEditHotelModalOpen, setIsEditHotelModalOpen] = useState(false);
   const [editingHotel, setEditingHotel] = useState<Hotel | null>(null);
   const [editedHotelName, setEditedHotelName] = useState('');
   const [editedHotelAddress, setEditedHotelAddress] = useState('');
-  const [editedHotelPhoto, setEditedHotelPhoto] = useState<string | undefined>(undefined);
+  const [editedHotelPhoto, setEditedHotelPhoto] = useState<string | null>(null);
 
   // Edit Apartment Modal State
   const [isEditApartmentModalOpen, setIsEditApartmentModalOpen] = useState(false);
@@ -314,7 +363,7 @@ const App: React.FC = () => {
     setIsAddHotelModalOpen(false);
     setNewHotelName('');
     setNewHotelAddress('');
-    setNewHotelPhoto(undefined);
+    setNewHotelPhoto(null);
   };
 
   const handleOpenEditHotelModal = (hotel: Hotel) => {
@@ -382,8 +431,8 @@ const App: React.FC = () => {
   const handleOpenEditApartmentModal = (apartment: Apartment) => {
     setEditingApartment(apartment);
     setEditedApartmentNumber(apartment.number);
-    setEditedApartmentDescription(apartment.description || '');
-    setEditedApartmentPhotos(apartment.photos || []);
+    setEditedApartmentDescription(apartment.description);
+    setEditedApartmentPhotos(apartment.photos);
     setIsEditApartmentModalOpen(true);
   };
 
@@ -505,7 +554,7 @@ const App: React.FC = () => {
                                 items: a.items.map(i =>
                                     i.id !== itemId ? i : {
                                         ...i,
-                                        photos: i.photos?.filter((_, index) => index !== photoIndex)
+                                        photos: i.photos.filter((_, index) => index !== photoIndex)
                                     }
                                 )
                             }
@@ -527,6 +576,7 @@ const App: React.FC = () => {
       dueDate: newTaskDueDate,
       priority: newTaskPriority,
       isComplete: false,
+      notificationSent: false,
     };
     setData(prev => ({ ...prev, scheduledTasks: [...prev.scheduledTasks, newTask]}));
     setIsAddTaskModalOpen(false);
@@ -774,7 +824,7 @@ const App: React.FC = () => {
                         <button onClick={() => handlePhotoClick([newHotelPhoto], 0)} className="w-full h-full block focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-md">
                           <img src={newHotelPhoto} alt="Preview" className="rounded-md object-cover w-full h-full" />
                         </button>
-                        <button onClick={() => setNewHotelPhoto(undefined)} className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"><XCircleIcon className="h-5 w-5"/></button>
+                        <button onClick={() => setNewHotelPhoto(null)} className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"><XCircleIcon className="h-5 w-5"/></button>
                     </div>
                 )}
               </div>
@@ -806,7 +856,7 @@ const App: React.FC = () => {
                         <button onClick={() => handlePhotoClick([editedHotelPhoto], 0)} className="w-full h-full block focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-md">
                           <img src={editedHotelPhoto} alt="Preview" className="rounded-md object-cover w-full h-full" />
                         </button>
-                        <button onClick={() => setEditedHotelPhoto(undefined)} className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"><XCircleIcon className="h-5 w-5"/></button>
+                        <button onClick={() => setEditedHotelPhoto(null)} className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"><XCircleIcon className="h-5 w-5"/></button>
                     </div>
                 )}
               </div>
