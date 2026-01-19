@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Apartment, Hotel, Item, ItemStatus, MaintenanceLog } from '../../types';
+import { Apartment, Hotel, Item, ItemStatus, MaintenanceLog } from '../types';
 import Header from './Header';
 import Modal from './Modal';
 import { PlusIcon, CameraIcon, TrashIcon, XCircleIcon, XIcon, PencilIcon } from './Icons';
