@@ -1,0 +1,130 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR" class="theme-blue font-inter">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manutenção de Apartamentos</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // Habilita o modo escuro baseado em classe
+        theme: {
+          extend: {
+            colors: {
+              primary: {
+                100: 'var(--color-primary-100)',
+                200: 'var(--color-primary-200)',
+                300: 'var(--color-primary-300)',
+                400: 'var(--color-primary-400)',
+                500: 'var(--color-primary-500)',
+                600: 'var(--color-primary-600)',
+                700: 'var(--color-primary-700)',
+                800: 'var(--color-primary-800)',
+                900: 'var(--color-primary-900)',
+              }
+            },
+            fontFamily: {
+              sans: 'var(--font-sans)',
+            }
+          },
+        },
+        plugins: [],
+      }
+    </script>
+    <style>
+      :root {
+        --color-primary-100: #dbeafe; --color-primary-200: #bfdbfe; --color-primary-300: #93c5fd; --color-primary-400: #60a5fa; --color-primary-500: #3b82f6; --color-primary-600: #2563eb; --color-primary-700: #1d4ed8; --color-primary-800: #1e40af; --color-primary-900: #1e3a8a;
+        --font-sans: 'Inter', sans-serif;
+      }
+      .theme-blue { --color-primary-100: #dbeafe; --color-primary-200: #bfdbfe; --color-primary-300: #93c5fd; --color-primary-400: #60a5fa; --color-primary-500: #3b82f6; --color-primary-600: #2563eb; --color-primary-700: #1d4ed8; --color-primary-800: #1e40af; --color-primary-900: #1e3a8a; }
+      .theme-green { --color-primary-100: #dcfce7; --color-primary-200: #bbf7d0; --color-primary-300: #86efac; --color-primary-400: #4ade80; --color-primary-500: #22c55e; --color-primary-600: #16a34a; --color-primary-700: #15803d; --color-primary-800: #166534; --color-primary-900: #14532d; }
+      .theme-violet { --color-primary-100: #ede9fe; --color-primary-200: #ddd6fe; --color-primary-300: #c4b5fd; --color-primary-400: #a78bfa; --color-primary-500: #8b5cf6; --color-primary-600: #7c3aed; --color-primary-700: #6d28d9; --color-primary-800: #5b21b6; --color-primary-900: #4c1d95; }
+      .theme-rose { --color-primary-100: #ffe4e6; --color-primary-200: #fecdd3; --color-primary-300: #fda4af; --color-primary-400: #fb7185; --color-primary-500: #f43f5e; --color-primary-600: #e11d48; --color-primary-700: #be123c; --color-primary-800: #9f1239; --color-primary-900: #881337; }
+      .theme-orange { --color-primary-100: #ffedd5; --color-primary-200: #fed7aa; --color-primary-300: #fdba74; --color-primary-400: #fb923c; --color-primary-500: #f97316; --color-primary-600: #ea580c; --color-primary-700: #c2410c; --color-primary-800: #9a3412; --color-primary-900: #7c2d12; }
+      .theme-slate { --color-primary-100: #f1f5f9; --color-primary-200: #e2e8f0; --color-primary-300: #cbd5e1; --color-primary-400: #94a3b8; --color-primary-500: #64748b; --color-primary-600: #475569; --color-primary-700: #334155; --color-primary-800: #1e293b; --color-primary-900: #0f172a; }
+
+      html.font-inter { --font-family: var(--font-sans); }
+
+      body {
+        font-family: var(--font-family, var(--font-sans));
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        transition: background-color 0.3s ease;
+      }
+      /* Custom input styles */
+      .input {
+        @apply mt-1 block w-full px-3 py-2 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 sm:text-sm transition-colors;
+        background-color: #ffffff;
+        border: 1px solid #d1d5db; /* gray-300 */
+        color: #111827; /* text-gray-900 */
+        color-scheme: light;
+      }
+      .input::placeholder {
+        color: #6b7280; /* gray-500 */
+      }
+      .dark .input {
+        background-color: #0f172a !important; /* slate-900 */
+        border-color: #334155 !important; /* slate-700 */
+        color: #f1f5f9 !important; /* slate-100 */
+        color-scheme: dark;
+      }
+      .dark .input::placeholder {
+        color: #94a3b8; /* slate-400 */
+      }
+      
+      /* Force text inputs to adopt custom styles on mobile, especially for dark mode, without affecting select dropdowns. */
+      input[type="text"].input,
+      input[type="date"].input,
+      textarea.input {
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      input[type="date"] {
+        color-scheme: dark;
+      }
+
+      /* Custom scrollbar for better mobile look */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #9ca3af; /* gray-400 */
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #6b7280; /* gray-500 */
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "firebase/": "https://esm.sh/firebase@^12.8.0/",
+    "@capacitor/core": "https://esm.sh/@capacitor/core@^8.0.1",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "@capacitor/local-notifications": "https://esm.sh/@capacitor/local-notifications@^8.0.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "@capacitor/cli": "https://esm.sh/@capacitor/cli@^8.0.1"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body>
+    <div id="root"></div>
+    <div id="modal-root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>

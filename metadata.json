@@ -1,0 +1,7 @@
+{
+  "name": "Manutenção de Apartamentos",
+  "description": "Um aplicativo para gerenciar a manutenção de apartamentos em hotéis, incluindo checklists de itens, histórico de manutenção e armazenamento de fotos.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

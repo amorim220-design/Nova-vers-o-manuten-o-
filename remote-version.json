@@ -1,0 +1,11 @@
+
+{
+  "version": "1.0.3",
+  "versionCode": 4,
+  "url": "https://github.com/aistudio-co/demo-apps/raw/main/manutencao-de-apartamentos/release/app-release.apk",
+  "notes": [
+    "Melhorias de desempenho.",
+    "Correção de bugs menores.",
+    "Novos recursos de agendamento."
+  ]
+}
