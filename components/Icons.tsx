@@ -1,6 +1,6 @@
 
 import React, { useContext } from 'react';
-import { IconContext } from '../IconContext';
+import { IconContext } from '../contexts/IconContext';
 
 export const PlusIcon: React.FC = () => {
     const { style } = useContext(IconContext);
