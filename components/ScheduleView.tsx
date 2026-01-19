@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ScheduledTask, TaskPriority } from '../../types';
+import { ScheduledTask, TaskPriority } from '../types';
 import { TrashIcon } from './Icons';
 import EmptyState from './EmptyState';
 import { ScheduleIllustration } from './Illustrations';
