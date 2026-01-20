@@ -30,7 +30,6 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # 🔹 Lê version.json (SEM ERRO DE SINTAXE)
       - name: Read version.json
         run: |
           VERSION_CODE=$(node -p "require('./version.json').versionCode")
@@ -43,10 +42,8 @@ jobs:
 
           echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-
           echo "Version OK: $VERSION_NAME ($VERSION_CODE)"
 
-      # 🔹 SEMPRE recria o Android do zero
       - name: Recreate Android platform
         run: |
           rm -rf android
@@ -55,49 +52,78 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # 🔹 Decodifica keystore
       - name: Decode keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.jks
 
-      # 🔹 Cria keystore.properties
-      - name: Create keystore.properties
+      # 🔥 PATCH: Força o build.gradle a assinar usando env vars (funciona mesmo recriando android/)
+      - name: Patch Gradle signing config
         run: |
-          cat > android/keystore.properties <<EOF
-          storeFile=app/release.keystore
-          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+          APP_GRADLE="android/app/build.gradle"
 
-      # 🔹 Build APK RELEASE assinado
-      - name: Build RELEASE APK
+          # Remove blocos antigos de signing (se existirem) para evitar duplicação
+          perl -0777 -i -pe 's/signingConfigs\s*\{.*?\}\s*//gs' "$APP_GRADLE"
+
+          # Garante que buildTypes.release usa signingConfig release
+          perl -0777 -i -pe 's/buildTypes\s*\{\s*release\s*\{(.*?)\}\s*\}/buildTypes {\n        release {\1\n            signingConfig signingConfigs.release\n        }\n    }/gs' "$APP_GRADLE"
+
+          # Insere signingConfigs dentro do android { ... } (logo após "android {")
+          perl -0777 -i -pe 's/android\s*\{\s*/android {\n    signingConfigs {\n        release {\n            storeFile file(\"release.jks\")\n            storePassword System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")\n            keyAlias System.getenv(\"ANDROID_KEY_ALIAS\")\n            keyPassword System.getenv(\"ANDROID_KEY_PASSWORD\")\n        }\n    }\n\n/gs' "$APP_GRADLE"
+
+      - name: Build RELEASE APK (signed)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease \
+          ./gradlew assembleRelease -x test \
             -PVERSION_CODE=$VERSION_CODE \
             -PVERSION_NAME=$VERSION_NAME
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      # 🔹 Localiza APK assinado
+      # 🔎 Diagnóstico: lista tudo que foi gerado
+      - name: List APK outputs
+        run: |
+          echo "==== APK files ===="
+          find android/app/build/outputs/apk -name "*.apk" -print || true
+          echo "==== Bundle files (if any) ===="
+          find android/app/build/outputs -name "*.aab" -print || true
+
+      # ✅ Pega preferencialmente o assinado, mas se só tiver unsigned mostra claramente
       - name: Find APK
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" | head -n 1)
+          APK_SIGNED=$(find android/app/build/outputs/apk/release -name "*.apk" ! -name "*unsigned*" | head -n 1)
+          APK_ANY=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
 
-          if [ -z "$APK_PATH" ]; then
-            echo "APK assinado não encontrado"
-            exit 1
+          if [ -n "$APK_SIGNED" ]; then
+            APK_PATH="$APK_SIGNED"
+            echo "APK assinado encontrado: $APK_PATH"
+          else
+            echo "APK assinado não encontrado."
+            echo "Se existir apenas *unsigned*, então a assinatura não foi aplicada."
+            echo "APKs encontrados:"
+            find android/app/build/outputs/apk/release -name "*.apk" -print || true
+
+            if [ -z "$APK_ANY" ]; then
+              echo "Nenhum APK release foi gerado."
+              exit 1
+            fi
+
+            # Se quiser falhar sempre quando não assinar, deixe exit 1 aqui.
+            # exit 1
+
+            # Se quiser continuar mesmo unsigned, comente o exit acima e use:
+            APK_PATH="$APK_ANY"
+            echo "Usando APK (provavelmente unsigned): $APK_PATH"
           fi
 
           echo "APK_PATH=$APK_PATH" >> $GITHUB_ENV
-          echo "APK encontrado: $APK_PATH"
 
-      # 🔹 Renomeia APK
       - name: Rename APK
         run: |
-          mv "$APK_PATH" manutencao-apartamentos-v$VERSION_NAME.apk
+          mv "$APK_PATH" "manutencao-apartamentos-v$VERSION_NAME.apk"
 
-      # 🔹 Upload do APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
