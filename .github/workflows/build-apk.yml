@@ -5,9 +5,6 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
-permissions:
-  contents: write
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -15,8 +12,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -25,7 +20,14 @@ jobs:
 
       - name: Read version.json
         run: |
-          node -e "const v=require('./version.json'); if(!v.code||!v.version){throw new Error('version.json precisa ter code e version')} console.log('VERSION_CODE='+v.code); console.log('VERSION_NAME='+v.version);" >> $GITHUB_ENV
+          node -e "
+            const v = require('./version.json');
+            if (!v.version || !v.versionCode) {
+              throw new Error('version.json precisa ter version e versionCode');
+            }
+            console.log('VERSION_NAME=' + v.version);
+            console.log('VERSION_CODE=' + v.versionCode);
+          " >> $GITHUB_ENV
 
       - name: Install dependencies
         run: npm install
@@ -48,26 +50,11 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Set Android versionCode/versionName
+      - name: Set Android versionCode and versionName
         run: |
-          GRADLE_FILE=android/app/build.gradle
-          if [ ! -f "$GRADLE_FILE" ]; then
-            GRADLE_FILE=android/app/build.gradle.kts
-          fi
-
-          echo "Using: $GRADLE_FILE"
-
-          if echo "$GRADLE_FILE" | grep -q "\.kts$"; then
-            # build.gradle.kts
-            sed -i "s/versionCode = [0-9]\+/versionCode = $VERSION_CODE/" "$GRADLE_FILE" || true
-            sed -i "s/versionName = \".*\"/versionName = \"$VERSION_NAME\"/" "$GRADLE_FILE" || true
-          else
-            # build.gradle
-            sed -i "s/versionCode [0-9]\+/versionCode $VERSION_CODE/" "$GRADLE_FILE"
-            sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" "$GRADLE_FILE"
-          fi
-
-          echo "Updated Android to versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+          cd android
+          sed -i "s/versionCode [0-9]\+/versionCode $VERSION_CODE/" app/build.gradle
+          sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" app/build.gradle
 
       - name: Build Debug APK
         run: |
@@ -77,32 +64,11 @@ jobs:
 
       - name: Rename APK
         run: |
-          mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk "release/manutencao-${VERSION_NAME}.apk"
+          mv android/app/build/outputs/apk/debug/app-debug.apk \
+             android/app/build/outputs/apk/debug/manutencao-apartamentos-v$VERSION_NAME.apk
 
-      - name: Create GitHub Release and upload APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.VERSION_NAME }}
-          name: v${{ env.VERSION_NAME }}
-          files: release/manutencao-${{ env.VERSION_NAME }}.apk
-
-      - name: Update version.json with apkUrl
-        run: |
-          REPO="${{ github.repository }}"
-          TAG="v${VERSION_NAME}"
-          APK_URL="https://github.com/${REPO}/releases/download/${TAG}/manutencao-${VERSION_NAME}.apk"
-
-          node -e "const fs=require('fs'); const p='version.json'; const j=JSON.parse(fs.readFileSync(p,'utf8')); j.apkUrl='${APK_URL}'; fs.writeFileSync(p, JSON.stringify(j,null,2)+'\n');"
-
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.json
-          git commit -m "chore: update apkUrl for v${VERSION_NAME}" || echo "No changes to commit"
-          git push || echo "Push skipped"
-
-      - name: Upload APK Artifact (optional)
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: release/manutencao-${{ env.VERSION_NAME }}.apk
+          name: manutencao-apartamentos-v${{ env.VERSION_NAME }}
+          path: android/app/build/outputs/apk/debug/*.apk
