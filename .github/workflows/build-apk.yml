@@ -65,9 +65,7 @@ jobs:
       - name: Build RELEASE APK (signed)
         run: |
           cd android
-          ls -la
-          chmod +x gradlew
-          ./gradlew assembleRelease
+          gradle assembleRelease
 
       - name: Pick signed APK and rename
         run: |
