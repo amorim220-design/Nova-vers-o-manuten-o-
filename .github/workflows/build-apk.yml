@@ -56,6 +56,11 @@ jobs:
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.jks
 
+          - name: Verify keystore (list aliases)
+            run: |
+              keytool -list -v -keystore android/app/release.jks -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" | sed -n '1,120p'
+
+
       # 🔥 PATCH: Força o build.gradle a assinar usando env vars (funciona mesmo recriando android/)
       - name: Patch Gradle signing config
         run: |
