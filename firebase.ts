@@ -4,7 +4,7 @@ import { getAuth } from "firebase/auth";
 
 // Configuração do Firebase com as credenciais do seu projeto.
 const firebaseConfig = {
-  apiKey: "AIzaSyBFCuhoJ6TDvLrivaGU-hukjxOQEEkMck8",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "manutencao-c65c0.firebaseapp.com",
   projectId: "manutencao-c65c0",
   storageBucket: "manutencao-c65c0.appspot.com",
@@ -19,3 +19,4 @@ const app = initializeApp(firebaseConfig);
 // Exporta as instâncias dos serviços para serem usadas no aplicativo
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+
