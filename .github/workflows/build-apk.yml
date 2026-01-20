@@ -18,16 +18,13 @@ jobs:
         with:
           node-version: "20"
 
-      # 👉 LÊ version.json (CORRETO)
       - name: Read version.json
         run: |
           node -e "
-          const v = require('./version.json');
-          if (!v.version || !v.versionCode) {
-            throw new Error('version.json precisa ter version e versionCode');
-          }
-          console.log('VERSION_NAME=' + v.version);
-          console.log('VERSION_CODE=' + v.versionCode);
+            const v=require('./version.json');
+            if(!v.version || !v.versionCode) throw new Error('version.json precisa ter version e versionCode');
+            console.log('VERSION_NAME='+v.version);
+            console.log('VERSION_CODE='+v.versionCode);
           " >> $GITHUB_ENV
 
       - name: Install dependencies
@@ -51,47 +48,52 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      # 👉 DECODE DO KEYSTORE (SECRETS)
       - name: Decode keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release-keystore.jks
+          mkdir -p android/app
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+          ls -la android/app/keystore.jks
 
-      # 👉 BUILD SIGNED (SEM QUEBRAR GRADLE)
-      - name: Build Release APK (signed)
-        working-directory: android
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - name: Create keystore.properties
         run: |
-          chmod +x gradlew
-
-          cat > keystore.properties <<EOF
-          storeFile=release-keystore.jks
-          storePassword=${ANDROID_KEYSTORE_PASSWORD}
-          keyAlias=${ANDROID_KEY_ALIAS}
-          keyPassword=${ANDROID_KEY_PASSWORD}
+          cat > android/keystore.properties <<EOF
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          storeFile=keystore.jks
           EOF
+          cat android/keystore.properties | sed 's/=.*/=***hidden***/'
 
+      - name: Set versionCode / versionName (Gradle properties)
+        run: |
+          echo "VERSION_CODE=${VERSION_CODE}" >> android/gradle.properties
+          echo "VERSION_NAME=${VERSION_NAME}" >> android/gradle.properties
+          cat android/gradle.properties | tail -n 5
+
+      - name: Build RELEASE APK
+        run: |
+          cd android
+          chmod +x gradlew
           ./gradlew assembleRelease
 
-      # 👉 RENOMEIA APK COM VERSÃO
-      - name: Rename APK
+      - name: Pick signed APK and rename
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          echo "APK release folder:"
+          ls -la android/app/build/outputs/apk/release || true
+
+          APK_PATH=$(find android/app/build/outputs/apk/release -type f -name "*.apk" \
+            ! -name "*unsigned*" ! -name "*unaligned*" | head -n 1)
 
           if [ -z "$APK_PATH" ]; then
-            echo "APK não encontrado"
+            echo "Nao achei APK assinado (apenas unsigned). Verifique build.gradle!"
             exit 1
           fi
 
-          echo "APK encontrado em: $APK_PATH"
+          mv "$APK_PATH" "manutencao-apartamentos-v${VERSION_NAME}.apk"
+          ls -la "manutencao-apartamentos-v${VERSION_NAME}.apk"
 
-          mv "$APK_PATH" manutencao-apartamentos-v${VERSION_NAME}.apk
-
-      # 👉 UPLOAD DO APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manutencao-apartamentos-v${{ env.VERSION_NAME }}
+          name: app-release
           path: manutencao-apartamentos-v${{ env.VERSION_NAME }}.apk
