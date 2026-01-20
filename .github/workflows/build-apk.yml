@@ -1,8 +1,8 @@
-name: Build Android APK (Capacitor)
+name: Build Android APK (Capacitor - Signed)
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -10,93 +10,110 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Node
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # 3. Dependências
       - name: Install dependencies
         run: npm ci || npm install
 
-      # 4. Build web
       - name: Build web (Vite)
         run: npm run build
 
-      # 5. Java
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      # 6. SEMPRE recria Android (repo não versiona)
+      - name: Read version.json
+        run: |
+          node -e "const v=require('./version.json'); if(!v.versionCode || !v.version) { throw new Error('version.json precisa ter version e versionCode'); } console.log('OK', v)"
+          echo "VERSION_CODE=$(node -p \"require('./version.json').versionCode\")" >> $GITHUB_ENV
+          echo "VERSION_NAME=$(node -p \"require('./version.json').version\")" >> $GITHUB_ENV
+
       - name: Recreate Android platform (fresh)
         run: |
           rm -rf android
           npx cap add android
+          npx cap sync android
 
-      # 7. Sync Capacitor
-      - name: Sync Capacitor
-        run: npx cap sync android
-
-      # 8. Decode keystore (Secrets)
-      - name: Decode keystore
+      - name: Decode keystore (from Secrets)
         run: |
           mkdir -p android/app
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
 
-      # 9. Create keystore.properties
       - name: Create keystore.properties
         run: |
-          cat > android/keystore.properties <<EOF
+          cat > android/keystore.properties <<'EOF'
           storeFile=app/release.keystore
           storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
           keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
           EOF
 
-      # 10. Read version.json
-      - name: Read version.json
+      - name: Add signing + versioning to Gradle (safe)
         run: |
-          node -e "
-          const v=require('./version.json');
-          if(!v.version || !v.versionCode) throw new Error('version.json inválido');
-          console.log('VERSION_NAME='+v.version);
-          console.log('VERSION_CODE='+v.versionCode);
-          " >> $GITHUB_ENV
+          cat > android/app/versioning-signing.gradle <<'EOF'
+          def keystoreProperties = new Properties()
+          def keystorePropertiesFile = rootProject.file("keystore.properties")
+          if (keystorePropertiesFile.exists()) {
+              keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+          }
 
-      # 11. Build RELEASE APK assinado
+          android {
+              defaultConfig {
+                  if (project.hasProperty("VERSION_CODE")) {
+                      versionCode project.property("VERSION_CODE").toInteger()
+                  }
+                  if (project.hasProperty("VERSION_NAME")) {
+                      versionName project.property("VERSION_NAME").toString()
+                  }
+              }
+
+              signingConfigs {
+                  release {
+                      if (keystorePropertiesFile.exists()) {
+                          storeFile file(keystoreProperties["storeFile"])
+                          storePassword keystoreProperties["storePassword"]
+                          keyAlias keystoreProperties["keyAlias"]
+                          keyPassword keystoreProperties["keyPassword"]
+                      }
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+
+          # aplica o arquivo acima no build.gradle do app
+          if ! grep -q "versioning-signing.gradle" android/app/build.gradle; then
+            echo "" >> android/app/build.gradle
+            echo "apply from: 'versioning-signing.gradle'" >> android/app/build.gradle
+          fi
+
       - name: Build RELEASE APK (signed)
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease \
-            -PVERSION_CODE=${VERSION_CODE} \
-            -PVERSION_NAME=${VERSION_NAME}
+          ./gradlew assembleRelease -PVERSION_CODE=${VERSION_CODE} -PVERSION_NAME=${VERSION_NAME}
 
-      # 12. Encontrar e renomear APK (SEM nome fixo)
-      - name: Find and rename signed APK
+      - name: Find and rename APK
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk -type f -name "*.apk" ! -name "*unsigned*" ! -name "*unaligned*" | head -n 1)
+          APK_PATH=$(find android/app/build/outputs/apk -type f -name "*.apk" | head -n 1)
+          echo "APK encontrado: $APK_PATH"
+          cp "$APK_PATH" "manutencao-apartamentos-v${VERSION_NAME}.apk"
 
-          if [ -z "$APK_PATH" ]; then
-            echo "❌ APK assinado não encontrado"
-            find android/app/build/outputs/apk -type f
-            exit 1
-          fi
-
-          echo "✅ APK encontrado: $APK_PATH"
-          mv "$APK_PATH" manutencao-apartamentos-v${VERSION_NAME}.apk
-
-      # 13. Upload
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: manutencao-apartamentos
+          name: apk-release-v${{ env.VERSION_NAME }}
           path: manutencao-apartamentos-v${{ env.VERSION_NAME }}.apk
