@@ -21,12 +21,10 @@ jobs:
       - name: Read version.json
         run: |
           node -e "
-            const v = require('./version.json');
-            if (!v.version || !v.versionCode) {
-              throw new Error('version.json precisa ter version e versionCode');
-            }
-            console.log('VERSION_NAME=' + v.version);
-            console.log('VERSION_CODE=' + v.versionCode);
+            const v=require('./version.json');
+            if (!v.version || !v.versionCode) throw new Error('version.json precisa ter version e versionCode');
+            console.log('VERSION_NAME='+v.version);
+            console.log('VERSION_CODE='+v.versionCode);
           " >> $GITHUB_ENV
 
       - name: Install dependencies
@@ -50,11 +48,23 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Set Android versionCode and versionName
+      - name: Set Android versionCode/versionName
         run: |
-          cd android
-          sed -i "s/versionCode [0-9]\+/versionCode $VERSION_CODE/" app/build.gradle
-          sed -i "s/versionName \".*\"/versionName \"$VERSION_NAME\"/" app/build.gradle
+          GRADLE_FILE="android/app/build.gradle"
+          if [ ! -f "$GRADLE_FILE" ]; then
+            echo "Nao achei $GRADLE_FILE"
+            find android -maxdepth 4 -type f -name "build.gradle" -print
+            exit 1
+          fi
+
+          echo "Aplicando VERSION_CODE=$VERSION_CODE e VERSION_NAME=$VERSION_NAME em $GRADLE_FILE"
+
+          # Troca versionCode e versionName no build.gradle
+          sed -i "s/versionCode [0-9]\\+/versionCode $VERSION_CODE/g" "$GRADLE_FILE"
+          sed -i "s/versionName \"[^\"]\\+\"/versionName \"$VERSION_NAME\"/g" "$GRADLE_FILE"
+
+          echo "Trecho do Gradle apos atualizar:"
+          grep -n "versionCode\\|versionName" -n "$GRADLE_FILE" | head -n 20
 
       - name: Build Debug APK
         run: |
@@ -62,13 +72,8 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      - name: Rename APK
-        run: |
-          mv android/app/build/outputs/apk/debug/app-debug.apk \
-             android/app/build/outputs/apk/debug/manutencao-apartamentos-v$VERSION_NAME.apk
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manutencao-apartamentos-v${{ env.VERSION_NAME }}
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
