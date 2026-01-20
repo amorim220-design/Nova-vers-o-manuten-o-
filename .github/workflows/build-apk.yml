@@ -78,8 +78,16 @@ jobs:
       # 👉 RENOMEIA APK COM VERSÃO
       - name: Rename APK
         run: |
-          mv android/app/build/outputs/apk/release/app-release.apk \
-          manutencao-apartamentos-v${VERSION_NAME}.apk
+          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_PATH" ]; then
+            echo "APK não encontrado"
+            exit 1
+          fi
+
+          echo "APK encontrado em: $APK_PATH"
+
+          mv "$APK_PATH" manutencao-apartamentos-v${VERSION_NAME}.apk
 
       # 👉 UPLOAD DO APK
       - name: Upload APK
