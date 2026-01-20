@@ -1,0 +1,65 @@
+apply plugin: 'com.android.application'
+
+import java.util.Properties
+
+// ====== KEystore (lido do keystore.properties) ======
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace "com.manutencao.app"
+    compileSdkVersion 34
+
+    defaultConfig {
+        applicationId "com.manutencao.app"
+        minSdkVersion 21
+        targetSdkVersion 34
+
+        // VERSION vem do GitHub Actions (version.json)
+        if (project.hasProperty("VERSION_CODE")) {
+            versionCode project.property("VERSION_CODE").toInteger()
+        } else {
+            versionCode 1
+        }
+
+        if (project.hasProperty("VERSION_NAME")) {
+            versionName project.property("VERSION_NAME").toString()
+        } else {
+            versionName "1.0"
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // debug continua normal
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: "libs", include: ["*.jar"])
+}
