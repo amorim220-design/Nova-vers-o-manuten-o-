@@ -1,4 +1,4 @@
-name: Build Android APK (Capacitor - Release)
+name: Build Android APK (Capacitor - Signed)
 
 on:
   push:
@@ -18,10 +18,17 @@ jobs:
         with:
           node-version: "20"
 
+      # 👉 LÊ version.json (CORRETO)
       - name: Read version.json
-        id: ver
         run: |
-          node -e "const v=require('./version.json'); if(!v.versionCode || !v.version) throw new Error('version.json precisa ter \"version\" e \"versionCode\"'); console.log('VERSION_CODE='+v.versionCode); console.log('VERSION_NAME='+v.version); " >> $GITHUB_ENV
+          node -e "
+          const v = require('./version.json');
+          if (!v.version || !v.versionCode) {
+            throw new Error('version.json precisa ter version e versionCode');
+          }
+          console.log('VERSION_NAME=' + v.version);
+          console.log('VERSION_CODE=' + v.versionCode);
+          " >> $GITHUB_ENV
 
       - name: Install dependencies
         run: npm install
@@ -44,30 +51,12 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      # 👉 DECODE DO KEYSTORE (SECRETS)
       - name: Decode keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/release-keystore.jks
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/release-keystore.jks
 
-      - name: Set Android versionCode/versionName
-        run: |
-          GRADLE_FILE="android/app/build.gradle"
-          if [ ! -f "$GRADLE_FILE" ]; then
-            GRADLE_FILE="android/app/build.gradle.kts"
-          fi
-
-          if [ ! -f "$GRADLE_FILE" ]; then
-            echo "Nao achei android/app/build.gradle nem build.gradle.kts"
-            ls -la android/app || true
-            exit 1
-          fi
-
-          echo "Usando: $GRADLE_FILE"
-          sed -i "s/versionCode [0-9]\\+/versionCode $VERSION_CODE/g" "$GRADLE_FILE" || true
-          sed -i "s/versionName \\\"[^\\\"]*\\\"/versionName \\\"$VERSION_NAME\\\"/g" "$GRADLE_FILE" || true
-
-          echo "---- Trecho do Gradle ----"
-          grep -n "versionCode\\|versionName" "$GRADLE_FILE" | head -n 20 || true
-
+      # 👉 BUILD SIGNED (SEM QUEBRAR GRADLE)
       - name: Build Release APK (signed)
         working-directory: android
         env:
@@ -84,33 +73,17 @@ jobs:
           keyPassword=${ANDROID_KEY_PASSWORD}
           EOF
 
-          # injeta signingConfig no build.gradle (se ainda não tiver)
-          if [ -f "app/build.gradle" ]; then
-            if ! grep -q "keystore.properties" app/build.gradle; then
-              perl -0777 -i -pe 's/android \{\n/android {\n    def keystoreProperties = new Properties()\n    def keystorePropertiesFile = rootProject.file("keystore.properties")\n    if (keystorePropertiesFile.exists()) {\n        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))\n    }\n\n/s' app/build.gradle
-
-              perl -0777 -i -pe 's/buildTypes \{\n/buildTypes {\n        release {\n            signingConfig signingConfigs.release\n        }\n/s' app/build.gradle
-
-              perl -0777 -i -pe 's/(defaultConfig \{[\s\S]*?\n)\}/$1}\n\n    signingConfigs {\n        release {\n            storeFile file(keystoreProperties["storeFile"])\n            storePassword keystoreProperties["storePassword"]\n            keyAlias keystoreProperties["keyAlias"]\n            keyPassword keystoreProperties["keyPassword"]\n        }\n    }\n/s' app/build.gradle
-            fi
-          fi
-
           ./gradlew assembleRelease
 
+      # 👉 RENOMEIA APK COM VERSÃO
       - name: Rename APK
         run: |
-          APK_PATH="android/app/build/outputs/apk/release/app-release.apk"
-          if [ ! -f "$APK_PATH" ]; then
-            echo "Nao achei o APK release em $APK_PATH"
-            find android/app/build/outputs -type f -name "*.apk" -maxdepth 6 || true
-            exit 1
-          fi
-          NEW_NAME="manutencao-apartamentos-v${VERSION_NAME}.apk"
-          cp "$APK_PATH" "$NEW_NAME"
-          echo "APK gerado: $NEW_NAME"
+          mv android/app/build/outputs/apk/release/app-release.apk \
+          manutencao-apartamentos-v${VERSION_NAME}.apk
 
+      # 👉 UPLOAD DO APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: manutencao-apk-release
-          path: manutencao-apartamentos-v*.apk
+          name: manutencao-apartamentos-v${{ env.VERSION_NAME }}
+          path: manutencao-apartamentos-v${{ env.VERSION_NAME }}.apk
