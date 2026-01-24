@@ -1,4 +1,4 @@
-name: Build Android APK (FINAL)
+name: Build Android APK (FINAL BLINDADO)
 
 on:
   push:
@@ -12,27 +12,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install deps
+      - name: Install dependencies
         run: npm install --legacy-peer-deps
+
+      # 🔥 INSTALA O GERADOR DE ÍCONES (CAPACITOR 6)
+      - name: Install Capacitor Assets
+        run: npm install -D @capacitor/assets
 
       - name: Build Web (Vite)
         run: npm run build
 
-      - name: Capacitor Sync
+      # 🔹 Recria Android SEMPRE
+      - name: Recreate Android
         run: |
-          npx cap sync
           rm -rf android
           npx cap add android
 
-      - name: Generate Icons
-        run: npx cap assets
+      - name: Sync Capacitor
+        run: npx cap sync
 
-      - name: Java
+      # ✅ GERA ÍCONES CORRETAMENTE
+      - name: Generate App Icons
+        run: npx cap-assets generate
+
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -43,7 +51,7 @@ jobs:
           mkdir -p android/app
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.jks
 
-      - name: Build APK
+      - name: Build Signed APK
         run: |
           cd android
           chmod +x gradlew
