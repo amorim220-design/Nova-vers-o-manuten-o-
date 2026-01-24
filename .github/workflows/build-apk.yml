@@ -24,16 +24,18 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # ✅ 1) Primeiro builda o web, pra garantir que exista ./dist/index.html
+      - name: Build web (Vite)
+        run: npm run build
+
+      # ✅ 2) Instala plugins na MESMA major do Capacitor Core (evita ERESOLVE)
       - name: Install Browser + App plugins (match Capacitor core major)
         run: |
           CORE_MAJOR=$(node -p "require('@capacitor/core/package.json').version.split('.')[0]")
           echo "Capacitor core major: $CORE_MAJOR"
           npm i @capacitor/browser@${CORE_MAJOR} @capacitor/app@${CORE_MAJOR}
-          npx cap sync
 
-      - name: Build web (Vite)
-        run: npm run build
-
+      # ✅ 3) Gera ícones (sem depender de "cap assets", que dá "unknown command")
       - name: Generate App Icons (Capacitor Assets)
         run: |
           npm i -D @capacitor/assets
@@ -59,11 +61,13 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "Version OK: $VERSION_NAME ($VERSION_CODE)"
 
+      # 🔹 4) Recria Android do zero (como você queria)
       - name: Recreate Android platform
         run: |
           rm -rf android
           npx cap add android
 
+      # ✅ 5) Agora sim faz sync do Android (com dist já pronto)
       - name: Sync Capacitor (android)
         run: npx cap sync android
 
