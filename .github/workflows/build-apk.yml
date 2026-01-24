@@ -24,16 +24,16 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Install Browser + App plugins
+      - name: Install Browser + App plugins (match Capacitor core major)
         run: |
-          npm i @capacitor/browser @capacitor/app
+          CORE_MAJOR=$(node -p "require('@capacitor/core/package.json').version.split('.')[0]")
+          echo "Capacitor core major: $CORE_MAJOR"
+          npm i @capacitor/browser@${CORE_MAJOR} @capacitor/app@${CORE_MAJOR}
           npx cap sync
 
       - name: Build web (Vite)
         run: npm run build
 
-      # ✅ Gera ícones a partir de resources/icon.png (1024x1024)
-      # (cap assets NÃO existe sem instalar @capacitor/assets)
       - name: Generate App Icons (Capacitor Assets)
         run: |
           npm i -D @capacitor/assets
@@ -59,7 +59,6 @@ jobs:
           echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
           echo "Version OK: $VERSION_NAME ($VERSION_CODE)"
 
-      # 🔹 SEMPRE recria o Android do zero
       - name: Recreate Android platform
         run: |
           rm -rf android
@@ -81,18 +80,12 @@ jobs:
             -storepass "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
             | sed -n '1,140p'
 
-      # 🔥 PATCH: Força o build.gradle a assinar usando env vars
       - name: Patch Gradle signing config
         run: |
           APP_GRADLE="android/app/build.gradle"
 
-          # Remove blocos antigos de signing (se existirem) para evitar duplicação
           perl -0777 -i -pe 's/signingConfigs\s*\{.*?\}\s*//gs' "$APP_GRADLE"
-
-          # Garante que buildTypes.release usa signingConfig release
           perl -0777 -i -pe 's/buildTypes\s*\{\s*release\s*\{(.*?)\}\s*\}/buildTypes {\n        release {\1\n            signingConfig signingConfigs.release\n        }\n    }/gs' "$APP_GRADLE"
-
-          # Insere signingConfigs dentro do android { ... }
           perl -0777 -i -pe 's/android\s*\{\s*/android {\n    signingConfigs {\n        release {\n            storeFile file(\"release.jks\")\n            storePassword System.getenv(\"ANDROID_KEYSTORE_PASSWORD\")\n            keyAlias System.getenv(\"ANDROID_KEY_ALIAS\")\n            keyPassword System.getenv(\"ANDROID_KEY_PASSWORD\")\n        }\n    }\n\n/gs' "$APP_GRADLE"
 
       - name: Build RELEASE APK (signed)
