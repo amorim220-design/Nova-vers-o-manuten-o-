@@ -1,4 +1,5 @@
-
+import React, { useEffect, useState } from "react";
+import { checkForUpdate, startUpdate, UpdateInfo } from "./update";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Hotel, Apartment, AppData, ScheduledTask, TaskPriority, Theme, IconStyle, ThemeColor, ItemStatus } from './types';
 import HotelList from './contexts/components/HotelList';
