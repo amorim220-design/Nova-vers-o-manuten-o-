@@ -1,3 +1,11 @@
+const [fatalError, setFatalError] = useState<string | null>(null);
+
+useEffect(() => {
+  window.onerror = function (msg, url, line) {
+    setFatalError(`${msg}\n${url}:${line}`);
+    return true;
+  };
+}, []);
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
