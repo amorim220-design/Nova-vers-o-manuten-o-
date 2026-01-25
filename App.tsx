@@ -1,10 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
-
-import { db } from "./firebase";
-import { useAuth } from "./contexts/AuthContext";
-import LoginView from "./contexts/components/LoginView";
 
 import {
   Apartment,
@@ -18,21 +13,35 @@ import {
   ThemeColor,
 } from "./types";
 
-import Dashboard from "./contexts/components/Dashboard";
-import Header from "./contexts/components/Header";
 import HotelList from "./contexts/components/HotelList";
 import HotelView from "./contexts/components/HotelView";
 import ApartmentView from "./contexts/components/ApartmentView";
 import ScheduleView from "./contexts/components/ScheduleView";
+import Dashboard from "./contexts/components/Dashboard";
+import Header from "./contexts/components/Header";
 import SettingsView from "./contexts/components/SettingsView";
 
+import { PlusIcon, CameraIcon, XCircleIcon, PencilIcon } from "./contexts/components/Icons";
 import Modal from "./contexts/components/Modal";
 import ConfirmationModal from "./contexts/components/ConfirmationModal";
 import PhotoViewerModal from "./contexts/components/PhotoViewerModal";
 import UpdateModal from "./contexts/components/UpdateModal";
 
 import { IconProvider } from "./contexts/IconContext";
-import { PlusIcon, CameraIcon, XCircleIcon, PencilIcon } from "./contexts/components/Icons";
+import { useAuth } from "./contexts/AuthContext";
+import LoginView from "./contexts/components/LoginView";
+
+import { db } from "./firebase";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+
+/** Helpers */
+const fileToBase64 = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = (err) => reject(err);
+  });
 
 type View =
   | "dashboard"
@@ -51,96 +60,18 @@ interface ConfirmModalConfig {
   confirmText?: string;
 }
 
-const fileToBase64 = (file: File): Promise<string> =>
-  new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (err) => reject(err);
-  });
+type RemoteVersionInfo = { version: string; versionCode: number; url: string; notes: string[] };
 
 const App: React.FC = () => {
   const { user, isAuthLoading, logout } = useAuth();
 
-  // ✅ Anti-tela-branca: se algo der ruim, mostra na tela
-  const [fatalError, setFatalError] = useState<string | null>(null);
-  const setFatal = (err: unknown, where: string) => {
-    const msg =
-      err instanceof Error ? `${err.message}\n${err.stack || ""}` : String(err);
-    console.error("FATAL:", where, err);
-    setFatalError(`[${where}]\n${msg}`);
-  };
-
   const [isLoading, setIsLoading] = useState(true);
-  const [data, setData] = useState<AppData>({
-    userName: "Usuário",
-    hotels: [],
-    scheduledTasks: [],
-  });
+  const [data, setData] = useState<AppData>({ userName: "Usuário", hotels: [], scheduledTasks: [] });
   const isInitialLoad = useRef(true);
 
-  const [view, setView] = useState<View>("dashboard");
-  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
-  const [selectedApartmentId, setSelectedApartmentId] = useState<string | null>(null);
-  const [confirmModalConfig, setConfirmModalConfig] = useState<ConfirmModalConfig | null>(null);
-
-  // Theme
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem("theme") as Theme | null;
-    if (saved) return saved;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  });
-
-  const [iconStyle, setIconStyle] = useState<IconStyle>(() => {
-    return (localStorage.getItem("iconStyle") as IconStyle | null) || "solid";
-  });
-
-  const [themeColor, setThemeColor] = useState<ThemeColor>(() => {
-    return (localStorage.getItem("themeColor") as ThemeColor | null) || "blue";
-  });
-
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState("");
-
-  // Photo viewer
-  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
-  const [photoViewerPhotos, setPhotoViewerPhotos] = useState<string[]>([]);
-  const [photoViewerStartIndex, setPhotoViewerStartIndex] = useState(0);
-
-  // Modals
-  const [isAddHotelModalOpen, setIsAddHotelModalOpen] = useState(false);
-  const [newHotelName, setNewHotelName] = useState("");
-  const [newHotelAddress, setNewHotelAddress] = useState("");
-  const [newHotelPhoto, setNewHotelPhoto] = useState<string | null>(null);
-
-  const [isEditHotelModalOpen, setIsEditHotelModalOpen] = useState(false);
-  const [editingHotel, setEditingHotel] = useState<Hotel | null>(null);
-  const [editedHotelName, setEditedHotelName] = useState("");
-  const [editedHotelAddress, setEditedHotelAddress] = useState("");
-  const [editedHotelPhoto, setEditedHotelPhoto] = useState<string | null>(null);
-
-  const [isEditApartmentModalOpen, setIsEditApartmentModalOpen] = useState(false);
-  const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
-  const [editedApartmentNumber, setEditedApartmentNumber] = useState("");
-  const [editedApartmentDescription, setEditedApartmentDescription] = useState("");
-  const [editedApartmentPhotos, setEditedApartmentPhotos] = useState<string[]>([]);
-
-  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDescription, setNewTaskDescription] = useState("");
-  const [newTaskDueDate, setNewTaskDueDate] = useState("");
-  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>(TaskPriority.Medium);
-
-  // Update modal (SEM Browser plugin)
+  // Update modal
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
-  const [latestVersionInfo, setLatestVersionInfo] = useState<{
-    version: string;
-    url: string;
-    notes: string[];
-    versionCode?: number;
-  } | null>(null);
+  const [latestVersionInfo, setLatestVersionInfo] = useState<RemoteVersionInfo | null>(null);
 
   const cleanLoadedData = (loadedData: any): AppData => {
     const dataToClean = loadedData || {};
@@ -199,7 +130,139 @@ const App: React.FC = () => {
     return cleaned;
   };
 
-  // Theme effects
+  /** Firestore listener */
+  useEffect(() => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    const docRef = doc(db, "users", user.uid);
+
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const loadedData = docSnap.data();
+          const cleanedData = cleanLoadedData(loadedData);
+          setData(cleanedData);
+        } else {
+          const initialData: AppData = { userName: "Usuário", hotels: [], scheduledTasks: [] };
+          setDoc(docRef, initialData);
+          setData(initialData);
+        }
+        setIsLoading(false);
+        isInitialLoad.current = false;
+      },
+      (error) => {
+        console.error("Failed to load data from Firestore:", error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  /** Save data */
+  useEffect(() => {
+    if (isLoading || isInitialLoad.current || !user) return;
+    const docRef = doc(db, "users", user.uid);
+    setDoc(docRef, data).catch((error) => console.error("Could not save data to Firestore", error));
+  }, [data, isLoading, user]);
+
+  /** Update check (Android only) */
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
+
+        const remoteVersionUrl =
+          "https://raw.githubusercontent.com/amorim2/manuten-ao/main/remote-version.json";
+
+        const [remoteResponse, localResponse] = await Promise.all([
+          fetch(`${remoteVersionUrl}?t=${Date.now()}`),
+          fetch("/version.json"),
+        ]);
+
+        if (!remoteResponse.ok || !localResponse.ok) return;
+
+        const remoteVersionInfo: RemoteVersionInfo = await remoteResponse.json();
+        const localVersionInfo: { version: string; versionCode: number } = await localResponse.json();
+
+        const currentVersionCode = Number(localVersionInfo.versionCode || 0);
+        const latestVersionCode = Number(remoteVersionInfo.versionCode || 0);
+
+        if (latestVersionCode > currentVersionCode) {
+          const lastSkippedVersion = localStorage.getItem("skipped_update_version");
+          const lastSkippedTime = parseInt(localStorage.getItem("skipped_update_time") || "0", 10);
+          const twentyFourHours = 24 * 60 * 60 * 1000;
+
+          if (
+            lastSkippedVersion === remoteVersionInfo.version &&
+            Date.now() - lastSkippedTime < twentyFourHours
+          ) {
+            return;
+          }
+
+          setLatestVersionInfo(remoteVersionInfo);
+          setIsUpdateModalOpen(true);
+        }
+      } catch (error) {
+        console.error("Failed to check for updates:", error);
+      }
+    };
+
+    const t = setTimeout(checkForUpdates, 3000);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleUpdateConfirm = () => {
+    const url = latestVersionInfo?.url;
+    if (!url) return;
+
+    try {
+      // tentativa 1
+      const w = window.open(url, "_blank");
+      if (!w) window.location.href = url; // fallback
+    } catch {
+      window.location.href = url;
+    } finally {
+      setIsUpdateModalOpen(false);
+    }
+  };
+
+  const handleUpdateCancel = () => {
+    if (latestVersionInfo) {
+      localStorage.setItem("skipped_update_version", latestVersionInfo.version);
+      localStorage.setItem("skipped_update_time", Date.now().toString());
+    }
+    setIsUpdateModalOpen(false);
+  };
+
+  /** UI state */
+  const [view, setView] = useState<View>("dashboard");
+  const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
+  const [selectedApartmentId, setSelectedApartmentId] = useState<string | null>(null);
+  const [confirmModalConfig, setConfirmModalConfig] = useState<ConfirmModalConfig | null>(null);
+
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem("theme") as Theme | null;
+    if (saved) return saved;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  });
+
+  const [iconStyle, setIconStyle] = useState<IconStyle>(() => {
+    return (localStorage.getItem("iconStyle") as IconStyle | null) || "solid";
+  });
+
+  const [themeColor, setThemeColor] = useState<ThemeColor>(() => {
+    return (localStorage.getItem("themeColor") as ThemeColor | null) || "blue";
+  });
+
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [tempName, setTempName] = useState("");
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("theme", theme);
@@ -217,135 +280,74 @@ const App: React.FC = () => {
     localStorage.setItem("themeColor", themeColor);
   }, [themeColor]);
 
-  // Firestore listener
-  useEffect(() => {
-    try {
-      if (!user) {
-        setIsLoading(false);
-        return;
-      }
-
-      setIsLoading(true);
-      const docRef = doc(db, "users", user.uid);
-
-      const unsubscribe = onSnapshot(
-        docRef,
-        (docSnap) => {
-          try {
-            if (docSnap.exists()) {
-              const loadedData = docSnap.data();
-              const cleanedData = cleanLoadedData(loadedData);
-              setData(cleanedData);
-            } else {
-              const initialData: AppData = { userName: "Usuário", hotels: [], scheduledTasks: [] };
-              setDoc(docRef, initialData);
-              setData(initialData);
-            }
-            setIsLoading(false);
-            isInitialLoad.current = false;
-          } catch (e) {
-            setFatal(e, "Firestore:onSnapshot");
-            setIsLoading(false);
-          }
-        },
-        (error) => {
-          setFatal(error, "Firestore:onSnapshot(error)");
-          setIsLoading(false);
-        }
-      );
-
-      return () => unsubscribe();
-    } catch (e) {
-      setFatal(e, "Firestore:setup");
-      setIsLoading(false);
-      return;
+  const handleSaveName = () => {
+    const finalName = tempName.trim();
+    if (finalName && finalName !== data.userName) {
+      setData((prev) => ({ ...prev, userName: finalName }));
     }
-  }, [user]);
-
-  // Save data to Firestore
-  useEffect(() => {
-    if (isLoading || isInitialLoad.current || !user) return;
-
-    const docRef = doc(db, "users", user.uid);
-    setDoc(docRef, data).catch((error) => setFatal(error, "Firestore:setDoc(save)"));
-  }, [data, isLoading, user]);
-
-  // Update check (sem Browser plugin)
-  useEffect(() => {
-    const checkForUpdates = async () => {
-      if (Capacitor.getPlatform() !== "android") return;
-
-      try {
-        const remoteVersionUrl =
-          "https://raw.githubusercontent.com/amorim2/manuten-ao/main/remote-version.json";
-
-        const [remoteResponse, localResponse] = await Promise.all([
-          fetch(`${remoteVersionUrl}?t=${Date.now()}`),
-          fetch("/version.json"),
-        ]);
-
-        if (!remoteResponse.ok || !localResponse.ok) return;
-
-        const remoteInfo = await remoteResponse.json();
-        const localInfo = await localResponse.json();
-
-        const currentVersionCode = Number(localInfo.versionCode || 0);
-        const latestVersionCode = Number(remoteInfo.versionCode || 0);
-
-        if (latestVersionCode > currentVersionCode) {
-          const lastSkippedVersion = localStorage.getItem("skipped_update_version");
-          const lastSkippedTime = parseInt(localStorage.getItem("skipped_update_time") || "0", 10);
-          const twentyFourHours = 24 * 60 * 60 * 1000;
-
-          if (lastSkippedVersion === remoteInfo.version && Date.now() - lastSkippedTime < twentyFourHours) {
-            return;
-          }
-
-          setLatestVersionInfo(remoteInfo);
-          setIsUpdateModalOpen(true);
-        }
-      } catch (e) {
-        // não mata o app por update
-        console.error("Update check failed:", e);
-      }
-    };
-
-    const t = setTimeout(checkForUpdates, 2500);
-    return () => clearTimeout(t);
-  }, []);
-
-  const handleUpdateConfirm = async () => {
-    try {
-      if (!latestVersionInfo?.url) return;
-
-      // Sem Browser plugin: tenta abrir de forma simples
-      // Em muitos Androids isso abre o navegador padrão.
-      window.open(latestVersionInfo.url, "_blank");
-
-      setIsUpdateModalOpen(false);
-    } catch (e) {
-      setFatal(e, "Update:openURL");
-    }
+    setIsEditingName(false);
   };
 
-  const handleUpdateCancel = () => {
-    if (latestVersionInfo) {
-      localStorage.setItem("skipped_update_version", latestVersionInfo.version);
-      localStorage.setItem("skipped_update_time", Date.now().toString());
-    }
-    setIsUpdateModalOpen(false);
+  const handleLogout = () => {
+    setConfirmModalConfig({
+      title: "Sair da Conta?",
+      message: "Você tem certeza que deseja sair? Seus dados estão salvos na nuvem.",
+      confirmText: "Sair",
+      onConfirm: () => {
+        logout();
+        setConfirmModalConfig(null);
+      },
+    });
   };
 
-  // Navigation
+  /** Photo Viewer */
+  const [isPhotoViewerOpen, setIsPhotoViewerOpen] = useState(false);
+  const [photoViewerPhotos, setPhotoViewerPhotos] = useState<string[]>([]);
+  const [photoViewerStartIndex, setPhotoViewerStartIndex] = useState(0);
+
+  const handlePhotoClick = (photos: string[], startIndex: number) => {
+    setPhotoViewerPhotos(photos);
+    setPhotoViewerStartIndex(startIndex);
+    setIsPhotoViewerOpen(true);
+  };
+
+  /** Modals state */
+  const [isAddHotelModalOpen, setIsAddHotelModalOpen] = useState(false);
+  const [newHotelName, setNewHotelName] = useState("");
+  const [newHotelAddress, setNewHotelAddress] = useState("");
+  const [newHotelPhoto, setNewHotelPhoto] = useState<string | null>(null);
+
+  const [isEditHotelModalOpen, setIsEditHotelModalOpen] = useState(false);
+  const [editingHotel, setEditingHotel] = useState<Hotel | null>(null);
+  const [editedHotelName, setEditedHotelName] = useState("");
+  const [editedHotelAddress, setEditedHotelAddress] = useState("");
+  const [editedHotelPhoto, setEditedHotelPhoto] = useState<string | null>(null);
+
+  const [isEditApartmentModalOpen, setIsEditApartmentModalOpen] = useState(false);
+  const [editingApartment, setEditingApartment] = useState<Apartment | null>(null);
+  const [editedApartmentNumber, setEditedApartmentNumber] = useState("");
+  const [editedApartmentDescription, setEditedApartmentDescription] = useState("");
+  const [editedApartmentPhotos, setEditedApartmentPhotos] = useState<string[]>([]);
+
+  const [isAddTaskModalOpen, setIsAddTaskModalOpen] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDescription, setNewTaskDescription] = useState("");
+  const [newTaskDueDate, setNewTaskDueDate] = useState("");
+  const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>(TaskPriority.Medium);
+
+  /** Selected */
+  const selectedHotel = useMemo(
+    () => data.hotels.find((h) => h.id === selectedHotelId) || null,
+    [data.hotels, selectedHotelId]
+  );
+
+  const selectedApartment = useMemo(
+    () => selectedHotel?.apartments.find((a) => a.id === selectedApartmentId) || null,
+    [selectedHotel, selectedApartmentId]
+  );
+
+  /** Navigation */
   const navigateTo = (newView: View) => setView(newView);
-
-  const selectedHotel = useMemo(() => {
-    return data.hotels.find((h) => h.id === selectedHotelId) || null;
-  }, [data.hotels, selectedHotelId]);
-
-  const selectedApartment = useMemo(() => {
-    return selectedHotel?.apartments.find((a) => a.id === selectedApartmentId) || null;
-  }, [selectedHotel, selectedApartmentId]);
 
   const handleSelectHotel = (hotelId: string) => {
     setSelectedHotelId(hotelId);
@@ -377,33 +379,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Handlers
-  const handleSaveName = () => {
-    const finalName = tempName.trim();
-    if (finalName && finalName !== data.userName) {
-      setData((prev) => ({ ...prev, userName: finalName }));
-    }
-    setIsEditingName(false);
-  };
-
-  const handleLogout = () => {
-    setConfirmModalConfig({
-      title: "Sair da Conta?",
-      message: "Você tem certeza que deseja sair? Seus dados estão salvos na nuvem.",
-      confirmText: "Sair",
-      onConfirm: () => {
-        logout();
-        setConfirmModalConfig(null);
-      },
-    });
-  };
-
-  const handlePhotoClick = (photos: string[], startIndex: number) => {
-    setPhotoViewerPhotos(photos);
-    setPhotoViewerStartIndex(startIndex);
-    setIsPhotoViewerOpen(true);
-  };
-
+  /** Data handlers */
   const handleAddHotel = () => {
     if (!newHotelName.trim()) return;
     const newHotel: Hotel = {
@@ -445,41 +421,31 @@ const App: React.FC = () => {
   };
 
   const handleHotelPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (e.target.files && e.target.files[0]) {
-        const base64 = await fileToBase64(e.target.files[0]);
-        setNewHotelPhoto(base64);
-      }
-    } catch (err) {
-      setFatal(err, "HotelPhotoUpload");
+    if (e.target.files?.[0]) {
+      const base64 = await fileToBase64(e.target.files[0]);
+      setNewHotelPhoto(base64);
+      e.target.value = "";
     }
   };
 
   const handleEditedHotelPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (e.target.files && e.target.files[0]) {
-        const base64 = await fileToBase64(e.target.files[0]);
-        setEditedHotelPhoto(base64);
-      }
-    } catch (err) {
-      setFatal(err, "EditedHotelPhotoUpload");
+    if (e.target.files?.[0]) {
+      const base64 = await fileToBase64(e.target.files[0]);
+      setEditedHotelPhoto(base64);
+      e.target.value = "";
     }
   };
 
   const handleDeleteHotel = (hotelId: string) => {
     const hotel = data.hotels.find((h) => h.id === hotelId);
     if (!hotel) return;
-
     setConfirmModalConfig({
       title: `Excluir Hotel "${hotel.name}"?`,
       message:
         "Esta ação é permanente. Todos os apartamentos e registros de manutenção associados a este hotel serão perdidos.",
       confirmText: "Excluir Hotel",
       onConfirm: () => {
-        setData((prev) => ({
-          ...prev,
-          hotels: prev.hotels.filter((h) => h.id !== hotelId),
-        }));
+        setData((prev) => ({ ...prev, hotels: prev.hotels.filter((h) => h.id !== hotelId) }));
         setConfirmModalConfig(null);
       },
     });
@@ -500,39 +466,36 @@ const App: React.FC = () => {
     setIsEditApartmentModalOpen(true);
   };
 
+  const handleUpdateApartment = (hotelId: string, updatedApartment: Apartment) => {
+    setData((prev) => ({
+      ...prev,
+      hotels: prev.hotels.map((h) =>
+        h.id !== hotelId
+          ? h
+          : { ...h, apartments: h.apartments.map((a) => (a.id === updatedApartment.id ? updatedApartment : a)) }
+      ),
+    }));
+  };
+
   const handleSaveEditedApartment = () => {
     if (!editingApartment || !selectedHotelId || !editedApartmentNumber.trim()) return;
-
     const updatedApartment: Apartment = {
       ...editingApartment,
       number: editedApartmentNumber,
       description: editedApartmentDescription,
       photos: editedApartmentPhotos,
     };
-
-    setData((prev) => ({
-      ...prev,
-      hotels: prev.hotels.map((h) =>
-        h.id !== selectedHotelId
-          ? h
-          : { ...h, apartments: h.apartments.map((a) => (a.id === updatedApartment.id ? updatedApartment : a)) }
-      ),
-    }));
-
+    handleUpdateApartment(selectedHotelId, updatedApartment);
     setIsEditApartmentModalOpen(false);
     setEditingApartment(null);
   };
 
   const handleEditedAptPhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (event.target.files) {
-        const files = Array.from(event.target.files);
-        const base64Photos = await Promise.all(files.map(fileToBase64));
-        setEditedApartmentPhotos((prev) => [...prev, ...base64Photos].slice(0, 5));
-        event.target.value = "";
-      }
-    } catch (err) {
-      setFatal(err, "EditedAptPhotoUpload");
+    if (event.target.files) {
+      const files = Array.from(event.target.files);
+      const base64Photos = await Promise.all(files.map(fileToBase64));
+      setEditedApartmentPhotos((prev) => [...prev, ...base64Photos].slice(0, 5));
+      event.target.value = "";
     }
   };
 
@@ -602,7 +565,7 @@ const App: React.FC = () => {
     if (!item) return;
 
     setConfirmModalConfig({
-      title: "Excluir Foto?",
+      title: `Excluir Foto?`,
       message: `Você tem certeza que deseja excluir esta foto do item "${item.name}"?`,
       confirmText: "Excluir Foto",
       onConfirm: () => {
@@ -635,7 +598,6 @@ const App: React.FC = () => {
 
   const handleAddTask = () => {
     if (!newTaskTitle.trim() || !newTaskDueDate) return;
-
     const newTask: ScheduledTask = {
       id: Date.now().toString(),
       title: newTaskTitle,
@@ -645,7 +607,6 @@ const App: React.FC = () => {
       isComplete: false,
       notificationSent: false,
     };
-
     setData((prev) => ({ ...prev, scheduledTasks: [...prev.scheduledTasks, newTask] }));
     setIsAddTaskModalOpen(false);
     setNewTaskTitle("");
@@ -666,29 +627,17 @@ const App: React.FC = () => {
     if (!task) return;
 
     setConfirmModalConfig({
-      title: "Excluir Tarefa?",
+      title: `Excluir Tarefa?`,
       message: `Você tem certeza que deseja excluir a tarefa "${task.title}"?`,
       confirmText: "Excluir Tarefa",
       onConfirm: () => {
-        setData((prev) => ({
-          ...prev,
-          scheduledTasks: prev.scheduledTasks.filter((t) => t.id !== taskId),
-        }));
+        setData((prev) => ({ ...prev, scheduledTasks: prev.scheduledTasks.filter((t) => t.id !== taskId) }));
         setConfirmModalConfig(null);
       },
     });
   };
 
-  // Loading/Auth + Fatal screen
-  if (fatalError) {
-    return (
-      <div className="h-screen w-screen p-4 bg-black text-white" style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>ERRO NO APP</h2>
-        {fatalError}
-      </div>
-    );
-  }
-
+  /** Loading/Auth guards */
   if (isAuthLoading || (user && isLoading)) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
@@ -701,7 +650,7 @@ const App: React.FC = () => {
 
   if (!user) return <LoginView />;
 
-  // Render view
+  /** Render view */
   const renderView = () => {
     switch (view) {
       case "dashboard":
@@ -729,7 +678,9 @@ const App: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Olá, {data.userName}!</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                    Olá, {data.userName}!
+                  </h1>
                   <button
                     onClick={() => {
                       setTempName(data.userName);
@@ -767,7 +718,15 @@ const App: React.FC = () => {
         );
 
       case "hotelView":
-        if (!selectedHotel) return <div className="p-4">Hotel não encontrado.</div>;
+        if (!selectedHotel)
+          return (
+            <div className="p-4">
+              Hotel não encontrado.{" "}
+              <button onClick={handleBack} className="text-primary-500">
+                Voltar
+              </button>
+            </div>
+          );
         return (
           <HotelView
             hotel={selectedHotel}
@@ -781,22 +740,21 @@ const App: React.FC = () => {
         );
 
       case "apartmentView":
-        if (!selectedHotel || !selectedApartment) return <div className="p-4">Apartamento não encontrado.</div>;
+        if (!selectedHotel || !selectedApartment)
+          return (
+            <div className="p-4">
+              Apartamento não encontrado.{" "}
+              <button onClick={handleBack} className="text-primary-500">
+                Voltar
+              </button>
+            </div>
+          );
         return (
           <ApartmentView
             apartment={selectedApartment}
             hotel={selectedHotel}
             onBack={handleBack}
-            onUpdateApartment={(apartment) =>
-              setData((prev) => ({
-                ...prev,
-                hotels: prev.hotels.map((h) =>
-                  h.id !== selectedHotel.id
-                    ? h
-                    : { ...h, apartments: h.apartments.map((a) => (a.id === apartment.id ? apartment : a)) }
-                ),
-              }))
-            }
+            onUpdateApartment={(apartment) => handleUpdateApartment(selectedHotel.id, apartment)}
             onPhotoClick={handlePhotoClick}
             onDeleteItem={(itemId) => handleDeleteItem(selectedHotel.id, selectedApartment.id, itemId)}
             onDeleteItemPhoto={(itemId, photoIndex) =>
@@ -830,7 +788,7 @@ const App: React.FC = () => {
         );
 
       default:
-        return <div className="p-4">Tela inválida.</div>;
+        return <Dashboard onNavigate={navigateTo} />;
     }
   };
 
@@ -887,7 +845,7 @@ const App: React.FC = () => {
             />
           )}
 
-          {/* Add Hotel */}
+          {/* ADD HOTEL */}
           <Modal isOpen={isAddHotelModalOpen} onClose={() => setIsAddHotelModalOpen(false)} title="Adicionar Novo Hotel">
             <div className="space-y-4">
               <div>
@@ -903,6 +861,7 @@ const App: React.FC = () => {
                   placeholder="Ex: Hotel Palace"
                 />
               </div>
+
               <div>
                 <label htmlFor="hotelAddress" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Endereço
@@ -916,8 +875,12 @@ const App: React.FC = () => {
                   placeholder="Ex: Av. Principal, 123"
                 />
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Principal (opcional)</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Foto Principal (opcional)
+                </label>
+
                 <label
                   htmlFor="hotel-photo-upload"
                   className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md cursor-pointer hover:border-primary-400 dark:hover:border-primary-500"
@@ -926,8 +889,15 @@ const App: React.FC = () => {
                     <CameraIcon />
                     <p className="text-xs text-gray-500 dark:text-gray-500">Clique para enviar</p>
                   </div>
-                  <input id="hotel-photo-upload" type="file" accept="image/*" className="sr-only" onChange={handleHotelPhotoUpload} />
+                  <input
+                    id="hotel-photo-upload"
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    onChange={handleHotelPhotoUpload}
+                  />
                 </label>
+
                 {newHotelPhoto && (
                   <div className="mt-2 relative w-32 h-32">
                     <button
@@ -945,232 +915,164 @@ const App: React.FC = () => {
                   </div>
                 )}
               </div>
+
               <div className="flex justify-end pt-2">
                 <button
                   onClick={handleAddHotel}
                   className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
                 >
                   Salvar Hotel
-                </button>
-              </div>
+              </button>
             </div>
-          </Modal>
+          </div>
+        </Modal>
 
-          {/* Edit Hotel */}
-          <Modal isOpen={isEditHotelModalOpen} onClose={() => setIsEditHotelModalOpen(false)} title="Editar Hotel">
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="editHotelName" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Nome do Hotel
-                </label>
-                <input
-                  type="text"
-                  id="editHotelName"
-                  value={editedHotelName}
-                  onChange={(e) => setEditedHotelName(e.target.value)}
-                  className="input"
-                />
-              </div>
-              <div>
-                <label htmlFor="editHotelAddress" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Endereço
-                </label>
-                <input
-                  type="text"
-                  id="editHotelAddress"
-                  value={editedHotelAddress}
-                  onChange={(e) => setEditedHotelAddress(e.target.value)}
-                  className="input"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Foto Principal (opcional)</label>
-                <label
-                  htmlFor="edit-hotel-photo-upload"
-                  className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md cursor-pointer hover:border-primary-400 dark:hover:border-primary-500"
-                >
-                  <div className="space-y-1 text-center">
-                    <CameraIcon />
-                    <p className="text-xs text-gray-500 dark:text-gray-500">Clique para enviar ou alterar</p>
-                  </div>
-                  <input
-                    id="edit-hotel-photo-upload"
-                    type="file"
-                    accept="image/*"
-                    className="sr-only"
-                    onChange={handleEditedHotelPhotoUpload}
-                  />
-                </label>
-                {editedHotelPhoto && (
-                  <div className="mt-2 relative w-32 h-32">
-                    <button
-                      onClick={() => handlePhotoClick([editedHotelPhoto], 0)}
-                      className="w-full h-full block focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-md"
-                    >
-                      <img src={editedHotelPhoto} alt="Preview" className="rounded-md object-cover w-full h-full" />
-                    </button>
-                    <button
-                      onClick={() => setEditedHotelPhoto(null)}
-                      className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"
-                    >
-                      <XCircleIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleUpdateHotel}
-                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
-                >
-                  Salvar Alterações
-                </button>
-              </div>
+        {/* EDITAR HOTEL */}
+        <Modal
+          isOpen={isEditHotelModalOpen}
+          onClose={() => setIsEditHotelModalOpen(false)}
+          title="Editar Hotel"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium">Nome do Hotel</label>
+              <input
+                type="text"
+                value={editedHotelName}
+                onChange={(e) => setEditedHotelName(e.target.value)}
+                className="input"
+              />
             </div>
-          </Modal>
 
-          {/* Edit Apartment */}
-          <Modal isOpen={isEditApartmentModalOpen} onClose={() => setIsEditApartmentModalOpen(false)} title="Editar Apartamento">
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="editApartmentNumber" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Número do Apartamento
-                </label>
-                <input
-                  type="text"
-                  id="editApartmentNumber"
-                  value={editedApartmentNumber}
-                  onChange={(e) => setEditedApartmentNumber(e.target.value)}
-                  className="input"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="editApartmentDescription" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Descrição (opcional)
-                </label>
-                <textarea
-                  id="editApartmentDescription"
-                  value={editedApartmentDescription}
-                  onChange={(e) => setEditedApartmentDescription(e.target.value)}
-                  rows={2}
-                  className="input"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fotos (opcional, máx 5)</label>
-                <label
-                  htmlFor="edit-apt-photo-upload"
-                  className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 dark:border-gray-600 border-dashed rounded-md cursor-pointer hover:border-primary-400 dark:hover:border-primary-500"
-                >
-                  <div className="space-y-1 text-center">
-                    <CameraIcon />
-                    <p className="text-xs text-gray-500 dark:text-gray-500">Clique para enviar</p>
-                  </div>
-                  <input id="edit-apt-photo-upload" type="file" multiple accept="image/*" className="sr-only" onChange={handleEditedAptPhotoUpload} />
-                </label>
-
-                {editedApartmentPhotos.length > 0 && (
-                  <div className="mt-2 grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {editedApartmentPhotos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <button
-                          onClick={() => handlePhotoClick(editedApartmentPhotos, index)}
-                          className="w-full h-full block focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 rounded-md"
-                        >
-                          <img src={photo} alt={`Preview ${index}`} className="rounded-md object-cover h-20 w-full" />
-                        </button>
-                        <button
-                          onClick={() => removeEditedAptPhoto(index)}
-                          className="absolute top-0 right-0 text-red-500 bg-white bg-opacity-70 rounded-full -mt-1 -mr-1 p-0.5"
-                        >
-                          <XCircleIcon className="h-5 w-5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleSaveEditedApartment}
-                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
-                >
-                  Salvar Alterações
-                </button>
-              </div>
+            <div>
+              <label className="block text-sm font-medium">Endereço</label>
+              <input
+                type="text"
+                value={editedHotelAddress}
+                onChange={(e) => setEditedHotelAddress(e.target.value)}
+                className="input"
+              />
             </div>
-          </Modal>
 
-          {/* Add Task */}
-          <Modal isOpen={isAddTaskModalOpen} onClose={() => setIsAddTaskModalOpen(false)} title="Adicionar Nova Tarefa">
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="taskTitle" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Título
-                </label>
-                <input
-                  type="text"
-                  id="taskTitle"
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  className="input"
-                  placeholder="Ex: Limpar filtro do ar condicionado"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="taskDesc" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Descrição (opcional)
-                </label>
-                <textarea
-                  id="taskDesc"
-                  value={newTaskDescription}
-                  onChange={(e) => setNewTaskDescription(e.target.value)}
-                  rows={2}
-                  className="input"
-                  placeholder="Ex: Apto 101, verificar também a tubulação"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="taskDueDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Data de Vencimento
-                </label>
-                <input type="date" id="taskDueDate" value={newTaskDueDate} onChange={(e) => setNewTaskDueDate(e.target.value)} className="input" />
-              </div>
-
-              <div>
-                <label htmlFor="taskPriority" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Prioridade
-                </label>
-                <select
-                  id="taskPriority"
-                  value={newTaskPriority}
-                  onChange={(e) => setNewTaskPriority(e.target.value as TaskPriority)}
-                  className="input"
-                >
-                  {Object.values(TaskPriority).map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleAddTask}
-                  className="w-full bg-primary-600 hover:bg-primary-700 text-white font-bold py-2 px-4 rounded-lg shadow-md"
-                >
-                  Salvar Tarefa
-                </button>
-              </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleUpdateHotel}
+                className="bg-primary-600 text-white px-4 py-2 rounded-lg"
+              >
+                Salvar Alterações
+              </button>
             </div>
-          </Modal>
-        </div>
+          </div>
+        </Modal>
+
+        {/* EDITAR APARTAMENTO */}
+        <Modal
+          isOpen={isEditApartmentModalOpen}
+          onClose={() => setIsEditApartmentModalOpen(false)}
+          title="Editar Apartamento"
+        >
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium">Número</label>
+              <input
+                type="text"
+                value={editedApartmentNumber}
+                onChange={(e) => setEditedApartmentNumber(e.target.value)}
+                className="input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium">Descrição</label>
+              <textarea
+                value={editedApartmentDescription}
+                onChange={(e) => setEditedApartmentDescription(e.target.value)}
+                className="input"
+                rows={3}
+              />
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleSaveEditedApartment}
+                className="bg-primary-600 text-white px-4 py-2 rounded-lg"
+              >
+                Salvar Apartamento
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* ADICIONAR TAREFA */}
+        <Modal
+          isOpen={isAddTaskModalOpen}
+          onClose={() => setIsAddTaskModalOpen(false)}
+          title="Adicionar Tarefa"
+        >
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Título"
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              className="input"
+            />
+
+            <textarea
+              placeholder="Descrição"
+              value={newTaskDescription}
+              onChange={(e) => setNewTaskDescription(e.target.value)}
+              className="input"
+            />
+
+            <input
+              type="date"
+              value={newTaskDueDate}
+              onChange={(e) => setNewTaskDueDate(e.target.value)}
+              className="input"
+            />
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddTask}
+                className="bg-primary-600 text-white px-4 py-2 rounded-lg"
+              >
+                Salvar Tarefa
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* CONFIRMAÇÃO */}
+        {confirmModalConfig && (
+          <ConfirmationModal
+            isOpen
+            title={confirmModalConfig.title}
+            message={confirmModalConfig.message}
+            confirmText={confirmModalConfig.confirmText}
+            onConfirm={confirmModalConfig.onConfirm}
+            onCancel={() => setConfirmModalConfig(null)}
+          />
+        )}
+
+        {/* VISUALIZADOR DE FOTOS */}
+        <PhotoViewerModal
+          isOpen={isPhotoViewerOpen}
+          photos={photoViewerPhotos}
+          startIndex={photoViewerStartIndex}
+          onClose={() => setIsPhotoViewerOpen(false)}
+        />
+
+        {/* UPDATE MODAL */}
+        {latestVersionInfo && (
+          <UpdateModal
+            isOpen={isUpdateModalOpen}
+            version={latestVersionInfo.version}
+            notes={latestVersionInfo.notes}
+            onConfirm={handleUpdateConfirm}
+            onCancel={handleUpdateCancel}
+          />
+        )}
       </div>
     </IconProvider>
   );
