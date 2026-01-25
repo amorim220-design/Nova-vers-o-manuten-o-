@@ -1,3 +1,11 @@
+// DEBUG TEMPORÁRIO – REMOVER DEPOIS
+window.onerror = function (msg, src, line, col, err) {
+  alert(
+    'ERRO JS:\n' +
+    msg + '\n' +
+    (src || '') + ':' + line
+  );
+};
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
