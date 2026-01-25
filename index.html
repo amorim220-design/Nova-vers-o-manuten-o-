@@ -12,12 +12,8 @@
       rel="stylesheet"
     />
 
-    <!-- ✅ NÃO use tailwind CDN em app/Capacitor.
-         O certo é ter Tailwind via build (postcss) no Vite.
-         Se você ainda não tem Tailwind no build, deixe essa linha TEMPORÁRIA,
-         mas o ideal é remover depois. -->
+    <!-- OPCIONAL: se você ainda não tem Tailwind no build -->
     <script src="https://cdn.tailwindcss.com"></script>
-
     <script>
       tailwind.config = {
         darkMode: "class",
@@ -36,9 +32,7 @@
                 900: "var(--color-primary-900)",
               },
             },
-            fontFamily: {
-              sans: "var(--font-sans)",
-            },
+            fontFamily: { sans: "var(--font-sans)" },
           },
         },
         plugins: [],
@@ -58,6 +52,7 @@
         --color-primary-900: #1e3a8a;
         --font-sans: "Inter", sans-serif;
       }
+
       .theme-blue {
         --color-primary-100: #dbeafe;
         --color-primary-200: #bfdbfe;
@@ -128,64 +123,36 @@
       html.font-inter {
         --font-family: var(--font-sans);
       }
-
       body {
         font-family: var(--font-family, var(--font-sans));
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
-        transition: background-color 0.3s ease;
       }
 
+      /* input base sem @apply */
       .input {
-        /* Obs: @apply só funciona no build Tailwind.
-           Mantive seu CSS, mas o IDEAL é migrar Tailwind pro build. */
-        background-color: #ffffff;
+        margin-top: 0.25rem;
+        display: block;
+        width: 100%;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.375rem;
+        background: #fff;
         border: 1px solid #d1d5db;
         color: #111827;
-        color-scheme: light;
-      }
-      .input::placeholder {
-        color: #6b7280;
       }
       .dark .input {
-        background-color: #0f172a !important;
+        background: #0f172a !important;
         border-color: #334155 !important;
         color: #f1f5f9 !important;
-        color-scheme: dark;
-      }
-      .dark .input::placeholder {
-        color: #94a3b8;
-      }
-
-      input[type="text"].input,
-      input[type="date"].input,
-      textarea.input {
-        -webkit-appearance: none;
-        appearance: none;
-      }
-
-      ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #9ca3af;
-        border-radius: 10px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #6b7280;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
       }
     </style>
-
-    <!-- ✅ REMOVIDO: importmap + index.css inexistente -->
   </head>
 
   <body>
     <div id="root"></div>
     <div id="modal-root"></div>
+
+    <!-- deixa assim (Vite reescreve no build) -->
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
