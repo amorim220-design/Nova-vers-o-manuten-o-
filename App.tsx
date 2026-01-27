@@ -132,44 +132,50 @@ const App: React.FC = () => {
 
   /** Firestore listener */
   useEffect(() => {
-    if (!user) {
-      setIsLoading(false);
-      return;
-    }
+  if (!user) {
+    setIsLoading(false);
+    return;
+  }
 
-    setIsLoading(true);
-    const docRef = doc(db, "users", user.uid);
+  setIsLoading(true);
+  const docRef = doc(db, "users", user.uid);
 
-    const unsubscribe = onSnapshot(
-      docRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const loadedData = docSnap.data();
-          const cleanedData = cleanLoadedData(loadedData);
-          setData(cleanedData);
-        } else {
-          const initialData: AppData = { userName: "Usuário", hotels: [], scheduledTasks: [] };
-          setDoc(docRef, initialData);
-          setData(initialData);
-        }
-        setIsLoading(false);
-        isInitialLoad.current = false;
-      },
-      (error) => {
-        console.error("Failed to load data from Firestore:", error);
-        setIsLoading(false);
+  const unsubscribe = onSnapshot(
+    docRef,
+    (docSnap) => {
+      if (docSnap.exists()) {
+        const loadedData = docSnap.data();
+        const cleanedData = cleanLoadedData(loadedData);
+        setData(cleanedData);
+      } else {
+        // ✅ NÃO cria doc automaticamente (evita zerar/criar doc vazio por UID errado)
+        const initialData: AppData = { userName: "Usuário", hotels: [], scheduledTasks: [] };
+        setData(initialData);
       }
-    );
 
-    return () => unsubscribe();
-  }, [user]);
+      setIsLoading(false);
+      isInitialLoad.current = false;
+    },
+    (error) => {
+      console.error("Failed to load data from Firestore:", error);
+      setIsLoading(false);
+    }
+  );
+
+  return () => unsubscribe();
+}, [user]);
 
   /** Save data */
   useEffect(() => {
-    if (isLoading || isInitialLoad.current || !user) return;
-    const docRef = doc(db, "users", user.uid);
-    setDoc(docRef, data).catch((error) => console.error("Could not save data to Firestore", error));
-  }, [data, isLoading, user]);
+  if (isLoading || isInitialLoad.current || !user) return;
+
+  const docRef = doc(db, "users", user.uid);
+
+  // ✅ merge: true evita sobrescrever/apagar campos e reduz risco de "sumir"
+  setDoc(docRef, data, { merge: true }).catch((error) =>
+    console.error("Could not save data to Firestore", error)
+  );
+}, [data, isLoading, user]);
 
   /** Update check (Android only) */
   useEffect(() => {
